@@ -6,7 +6,7 @@ Ergon runs commands on an agent's behalf in the background and keeps them alive 
 
 ## What It Is
 
-A session's command tool usually caps at around 30 seconds and starts a fresh shell on every call. Two things follow. A task that takes longer than the cap cannot be started at all, and nothing the agent starts can outlive the call that started it.
+In the agent runtimes this runner was built for, the command tool caps near 30 seconds and starts a fresh shell on every call. Two things follow. A task that takes longer than the cap cannot be started at all, and nothing the agent starts can outlive the call that started it.
 
 Ergon moves the long-running part off the agent's hands. The agent asks for a job, the runner starts the process and returns a durable identifier, and the agent keeps working. Later it polls the state, reads the tail of the log, and kills the job if needed. The identifier survives the tool call, the shell, and the session.
 
@@ -26,7 +26,7 @@ The shape is a laundromat. You hand over a load, you get a ticket number, the ma
 | Cleanup | An interrupted command leaves child processes behind | Kills the whole process group, so children die with the job |
 | Audit trail | Whatever the transcript happened to capture | A durable record: argv, cwd, pid, start and end, exit code, log path |
 
-The mechanism that matters is not speed. A long task becomes a handle the model can carry across many steps. In a shell slot the agent must fit a job inside one call, so it splits work into guesses about size, and a long sweep becomes impossible or is replaced by a truncated sample.
+The mechanism that matters is the handle. A long task becomes an identifier the model can carry across many steps. In a shell slot the agent must fit a job inside one call, so it splits work into guesses about size, and a long sweep becomes impossible or is replaced by a truncated sample.
 
 ## The Tools
 
@@ -112,7 +112,7 @@ throwaway token, so the same two jobs reproduce locally with the commands in its
 
 ## Quick Start
 
-Deploy the service:
+Deploy the runner:
 
 ```bash
 mkdir -p ~/ergon/workspace && cd ~/ergon
@@ -169,9 +169,9 @@ kill_job  20260101T120000Z-build-1a2b3c
 
 ## Limitations
 
-* **POSIX only.** Stopping a process group uses `os.killpg`, so the service does not run natively on Windows. Run it in a container there.
+* **POSIX only.** Stopping a process group uses `os.killpg`, so the runner does not run natively on Windows. Run it in a container there.
 * **Narrow on purpose.** It runs listed programs. It is not a general terminal, and adding a shell to the allow-list removes the confinement the design depends on.
-* **One host.** A job runs where the service runs, and it sees that machine's mounts.
+* **One host.** A job runs where the runner runs, and it sees that machine's mounts.
 * **Not a policy engine.** A passed job is a process that exited 0. Deciding what a result means for a project stays outside the runner.
 * **Output is capped.** A capped log is a truncated log, and the job note says so. A program that must emit everything needs a larger cap or a file.
 

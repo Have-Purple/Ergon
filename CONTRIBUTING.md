@@ -1,10 +1,10 @@
 # Contributing
 
-## Run it first
+## Run It First
 
 ```bash
 cp .env.example .env          # then set ERGON_TOKEN
-docker compose up -d --build
+docker compose up -d --build --wait --wait-timeout 300
 curl -s localhost:8000/health
 ERGON_TOKEN=<the token from .env> python3 smoke.py
 ```
@@ -12,7 +12,7 @@ ERGON_TOKEN=<the token from .env> python3 smoke.py
 `smoke.py` is standard library only, so it runs from any host that can reach the port. Every change
 should leave it passing.
 
-## Rules the code keeps
+## Rules the Code Keeps
 
 * **Standard library only in `server.py`.** No dependency install in the image means nothing to fetch,
   nothing to audit, and nothing to update on the hot path.
@@ -21,14 +21,16 @@ should leave it passing.
   interpreter text. `KeyError: 'job_id'` is a bug report; `refused: poll_job requires job_id` is a
   policy.
 * **Every guard has a measurement beside it.** Where the code refuses a startup configuration, the
-  comment names the state it prevents, in the form the code was caught in. Several of these rules came
-  from a probe that showed a working wipe, not from a theory.
+  comment names the state it prevents, in the form the code was caught in. The comment beside the prune
+  floor records a measured `prune_jobs(older_than_hours=1)` as a working wipe of everything the runner
+  recorded in the last hour.
 * **Bounds are per job, and the total is bounded by the disk.** `ERGON_LOG_CAP_MB` bounds one log, and
   `ERGON_MIN_FREE_MB` bounds the volume. A change to one should say what happens to the other.
-* **A lost process is reported as lost.** After a restart the sidecars restore as `lost`. A record that
-  disappears silently is a worse failure than one that says it cannot account for the process.
+* **A lost process is reported as lost.** After a restart, a job whose process can no longer be found is
+  recorded as `lost`, and the code calls those processes sidecars. A record that disappears silently is
+  a worse failure than one that says it cannot account for the process.
 
-## Pull requests
+## Pull Requests
 
 Describe the behavior change, the measurement that shows it, and the check that pins it. Keep the commit
 message in the imperative and name the subsystem (`fix(start_job): refuse a cap above the ceiling`).
