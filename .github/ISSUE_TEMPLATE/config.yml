@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a vulnerability
+    url: https://github.com/Have-Purple/Ergon/security/advisories/new
+    about: >-
+      A way to run a program off the allow-list, escape the workspace, bypass the token, or write
+      outside the runner's bounds is a vulnerability. Open a private security advisory, not an issue.
+      See SECURITY.md.

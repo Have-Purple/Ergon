@@ -74,13 +74,41 @@ A log that stays empty for a long stretch is normal for a program that buffers i
 |---|---|
 | `ERGON_TOKEN` | Bearer token for every request. Required; an empty value is a startup refusal. |
 | `ERGON_ALLOW` | Programs an agent may start. This is the security boundary. |
+| `ERGON_PASS_ENV` | Environment variables passed through to jobs. Everything else is withheld. |
+| `ERGON_PORT` | Port the server binds inside the container. |
+| `ERGON_HOST_PORT` | Port published on the host. Compose only; the server binds `ERGON_PORT`. |
+| `ERGON_WORKSPACE` | Host directory mounted at `/workspace`, the only place a job may run. |
+| `ERGON_STATE` | Container directory for job records and logs, default `/state`. Records store argv at mode `0600`, so keep that volume private. |
 | `ERGON_MAX_JOBS` | Concurrent jobs allowed before a start is refused. |
 | `ERGON_LOG_CAP_MB` | Default per-job output cap. |
 | `ERGON_LOG_CAP_MAX_MB` | Ceiling a caller may request for one job. |
+| `ERGON_REAP_SECONDS` | Interval between reaps of finished processes. |
+| `ERGON_RETAIN_HOURS` | Age after which finished records and logs are deleted. |
+| `ERGON_PRUNE_MIN_HOURS` | The youngest window a `prune_jobs` request may ask for. |
 | `ERGON_MIN_FREE_MB` | Free space required on the state volume before a job starts. |
-| `ERGON_RETAIN_HOURS` | Age after which finished records become eligible for pruning. |
+| `ERGON_TAG` | Image tag to build and run; also the version the server reports. |
 
 Two mounts carry the rest: a workspace the runner can enter, and a state volume for job records and logs. Publish the port only on the interfaces that need it, because the token is the only thing between a caller and the allow-list.
+
+## Repository Contents
+
+| File | What it is |
+|---|---|
+| `server.py` | The server. Standard library only: six tools over JSON-RPC 2.0 and Streamable HTTP. |
+| `Dockerfile` | A slim Python base, a non-root user, no dependency install, a healthcheck. |
+| `docker-compose.yml` | The deployment: port, token, allow-list, limits, state volume, workspace mount. |
+| `.env.example` | The settings to copy into `.env`. `.env` holds the secret and is never committed. |
+| `smoke.py` | A standard-library client that checks health, the token, the handshake, the six tools, one real job, and the refusals. |
+| `.gitignore` | Keeps `.env`, the state volume, the workspace, and logs out of the repository. |
+| `SECURITY.md` | The boundary, how to report a vulnerability, and the behavior treated as a regression. |
+| `CONTRIBUTING.md` | How to run it, and the rules the code keeps. |
+| `.github/workflows/ci.yml` | Two jobs on every push and pull request: startup guards, and the smoke run over compose. |
+| `.github/ISSUE_TEMPLATE/` | A bug report form that asks for the promise being broken, and a feature form that asks for the refusal and the cost. |
+| `.github/PULL_REQUEST_TEMPLATE.md` | Behavior, measurement, and the checks a change must leave passing. |
+
+The CI workflow needs no secrets: it starts the service on the runner's loopback with a literal
+throwaway token, so the same two jobs reproduce locally with the commands in its steps.
+
 
 ## Quick Start
 
@@ -92,7 +120,12 @@ cp .env.example .env
 python3 -c "import secrets; print(secrets.token_urlsafe(48))"   # paste the value into .env
 docker compose up -d --build
 curl -s localhost:8000/health
+ERGON_TOKEN=<the token from .env> python3 smoke.py
 ```
+
+The last line is the repository's own smoke client: eleven checks over health, the bearer token, the
+handshake, the six advertised tools, one real job from start to its logged output, and the refusals for
+a program off the allow-list, an escaping `cwd`, and an argv written as a shell string.
 
 Register it with an MCP-capable client:
 
@@ -132,7 +165,7 @@ kill_job  20260101T120000Z-build-1a2b3c
 * **The handle is the product.** The job id is what the model keeps across turns, and the process, the log, and the record all outlive the call that created them.
 * **Refusals are recorded.** A disallowed program, an escaping working directory, and an over-limit start each answer with a reason naming the setting, so the caller corrects the request rather than guessing.
 * **State is inspectable.** Every job keeps its argv, cwd, pid, timestamps, exit code, cap, and log path, which turns "what did the agent run" into a query.
-* **The response is negotiable.** The endpoint answers as JSON and as `text/event-stream`, the two shapes a Streamable HTTP client must accept.
+* **The response is one JSON body.** The endpoint answers `POST /mcp` with a single `application/json` body, which the Streamable HTTP transport allows in place of an SSE stream.
 
 ## Limitations
 

@@ -1,0 +1,124 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE: ergon-ci
+  # A literal throwaway value for an ephemeral service on a runner's loopback interface. It is not a
+  # secret, and keeping it literal means the same run reproduces locally with no secrets store.
+  ERGON_TOKEN: ci-throwaway-token
+  ERGON_ALLOW: python3
+  ERGON_WORKSPACE: ./workspace
+
+jobs:
+  guards:
+    name: Compile and startup guards
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Both modules compile
+        run: python -m py_compile server.py smoke.py
+
+      - name: Build the image
+        run: docker build -t "$IMAGE" .
+
+      - name: The server refuses every unsafe configuration at startup
+        shell: bash
+        run: |
+          refuse() {
+            desc="$1"
+            shift
+            set +e
+            out="$(docker run --rm "$@" "$IMAGE" 2>&1)"
+            code=$?
+            set -e
+            if [ "$code" -eq 2 ] && printf '%s' "$out" | grep -q 'refusing to start'; then
+              printf 'PASS %s\n' "$desc"
+            else
+              printf 'FAIL %s: exit=%s output=%s\n' "$desc" "$code" "$out"
+              exit 1
+            fi
+          }
+          refuse "empty token" -e ERGON_TOKEN= -e ERGON_ALLOW=python3
+          refuse "empty allow-list" -e ERGON_TOKEN=ci-throwaway-token -e ERGON_ALLOW=
+          refuse "retention under one hour" -e ERGON_TOKEN=ci-throwaway-token -e ERGON_ALLOW=python3 -e ERGON_RETAIN_HOURS=0
+          refuse "NaN retention window" -e ERGON_TOKEN=ci-throwaway-token -e ERGON_ALLOW=python3 -e ERGON_RETAIN_HOURS=NaN
+          refuse "ceiling below the default cap" -e ERGON_TOKEN=ci-throwaway-token -e ERGON_ALLOW=python3 -e ERGON_LOG_CAP_MB=64 -e ERGON_LOG_CAP_MAX_MB=16
+          refuse "prune floor under one hour" -e ERGON_TOKEN=ci-throwaway-token -e ERGON_ALLOW=python3 -e ERGON_PRUNE_MIN_HOURS=0
+          refuse "negative free-space floor" -e ERGON_TOKEN=ci-throwaway-token -e ERGON_ALLOW=python3 -e ERGON_MIN_FREE_MB=-1
+
+      - name: A configured start succeeds and reports its limits
+        shell: bash
+        run: |
+          set +e
+          docker run --rm -d --name ergon-start -p 127.0.0.1:8000:8000 -e ERGON_TOKEN -e ERGON_ALLOW "$IMAGE" >/dev/null
+          set -e
+          for _ in 1 2 3 4 5 6 7 8 9 10; do
+            if curl -fsS localhost:8000/health >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          health="$(curl -fsS localhost:8000/health)"
+          docker rm -f ergon-start >/dev/null
+          printf '%s\n' "$health"
+          printf '%s' "$health" | grep -q '"ok": true'
+          printf '%s' "$health" | grep -q '"max_jobs"'
+          printf '%s' "$health" | grep -q '"log_cap_mb"'
+
+  smoke:
+    name: Deployment smoke over compose
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: The compose file interpolates without a .env on disk
+        run: docker compose config --quiet
+
+      - name: Start the deployment
+        run: docker compose up -d --build --wait --wait-timeout 300
+
+      - name: Health answers without a token
+        run: |
+          ok=0
+          for _ in $(seq 1 60); do
+            if curl -fsS localhost:8000/health >health.json 2>health.err; then ok=1; break; fi
+            sleep 2
+          done
+          if [ "$ok" -ne 1 ]; then
+            echo "health never answered on the published port"
+            cat health.err
+            docker compose logs --tail 40
+            exit 1
+          fi
+          cat health.json
+
+      - name: Smoke checks
+        run: ERGON_URL=http://127.0.0.1:8000 python3 smoke.py
+
+      - name: Show service logs when a step failed
+        if: failure()
+        run: docker compose logs --tail 200
+
+      - name: Teardown
+        if: always()
+        run: docker compose down -v --remove-orphans

@@ -1,0 +1,11 @@
+# The shared secret. It is never committed.
+.env
+
+# The directory jobs run inside, and any local state volume, are deployment artifacts, not source.
+workspace/
+state/
+
+# Runtime output.
+*.log
+__pycache__/
+*.pyc

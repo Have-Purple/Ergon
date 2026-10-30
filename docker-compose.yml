@@ -1,0 +1,73 @@
+# Ergon deployment. Copy .env.example to .env, set ERGON_TOKEN, then:
+#   docker compose up -d --build
+#   curl -s localhost:8000/health
+name: ergon
+
+services:
+  ergon:
+    build: .
+    image: ergon:${ERGON_TAG:-0.1.0}
+    restart: unless-stopped
+    ports:
+      # The host port is a variable so a deployment never edits this file to move a port.
+      # Publish on one address (for example 127.0.0.1:8000) whenever the host is not inside a
+      # trusted network: the bearer token is the only thing between a caller and the allow-list.
+      - "${ERGON_HOST_PORT:-8000}:8000"
+    environment:
+      # The server refuses to start with an empty token, so compose fails loudly rather than
+      # bringing up an open service.
+      ERGON_TOKEN: ${ERGON_TOKEN:?ERGON_TOKEN must be set in .env}
+      # The capability boundary: argv[0] of every job must appear here.
+      ERGON_ALLOW: ${ERGON_ALLOW:-python3}
+      # Environment passed through to jobs. Everything else is withheld, and the server keeps a
+      # deny-list for loader and interpreter variables no job should inherit.
+      ERGON_PASS_ENV: ${ERGON_PASS_ENV:-PATH,HOME,LANG}
+      ERGON_PORT: "8000"
+      # Resource limits, set here rather than left at the code defaults (64 MB and 16 jobs), so one
+      # runaway job cannot write 64 MB to the state volume. One capped job costs about
+      # ERGON_LOG_CAP_MB; there is no shared bound across jobs.
+      ERGON_LOG_CAP_MB: ${ERGON_LOG_CAP_MB:-16}
+      ERGON_MAX_JOBS: ${ERGON_MAX_JOBS:-8}
+      # The ceiling a per-job log_cap_mb request may not exceed. The default above still applies to
+      # a job that asks for nothing, so a long build can ask for more within a bound the deployment
+      # set, not one the caller chose.
+      ERGON_LOG_CAP_MAX_MB: ${ERGON_LOG_CAP_MAX_MB:-64}
+      ERGON_REAP_SECONDS: ${ERGON_REAP_SECONDS:-2}
+      # Retention. A runner is a command tool, not storage: finished records and logs are deleted
+      # after this window, and the server refuses to start below one hour so a misconfiguration
+      # cannot wipe the state instantly.
+      ERGON_RETAIN_HOURS: ${ERGON_RETAIN_HOURS:-72}
+      # The youngest window a prune_jobs request may ask for, so a token alone cannot prune younger
+      # than the retention policy.
+      ERGON_PRUNE_MIN_HOURS: ${ERGON_PRUNE_MIN_HOURS:-72}
+      # Free space required on the state volume before a job starts. A time window bounds time and
+      # not bytes, so this is the bound that keeps a burst of finished jobs off the disk. 0 disables.
+      ERGON_MIN_FREE_MB: ${ERGON_MIN_FREE_MB:-512}
+      # One source of truth for the build identity: the tag drives the image name and the version
+      # the server reports in initialize and /health.
+      ERGON_VERSION: ${ERGON_TAG:-0.1.0}
+    volumes:
+      - ergon-state:/state
+      # Jobs run inside this directory, and cwd outside it is refused. Use a dedicated path, not a
+      # home directory, because the allow-list can read whatever this mount exposes.
+      - ${ERGON_WORKSPACE:-./workspace}:/workspace
+
+    # Mounting the docker socket lets jobs start containers on the host, which is root-equivalent
+    # control of the machine. It is off by default. Enable it only for jobs that genuinely need it,
+    # and restrict the published port to the hosts that need it.
+    #
+    #   volumes:
+    #     - /var/run/docker.sock:/var/run/docker.sock
+    #   group_add:
+    #     - "998"
+
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 20s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+volumes:
+  ergon-state:

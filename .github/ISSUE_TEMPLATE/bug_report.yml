@@ -1,0 +1,66 @@
+name: Bug report
+description: A behavior that differs from what the README, SECURITY.md, or a code comment promises.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A runner starts processes, so a report that shows a way to run a program off the allow-list,
+        escape the workspace, bypass the token, or write outside the runner's bounds is a vulnerability.
+        Report those privately through the security advisory mechanism, not here. See SECURITY.md.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The `version` field from `GET /health`.
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: textarea
+    id: deployment
+    attributes:
+      label: Deployment settings in play
+      description: |
+        `ERGON_ALLOW`, the workspace and state mounts, the published port, and the resource limits.
+        Never paste a token, and redact any path that identifies a private machine.
+      render: yaml
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened
+      description: The state, exit code, refusal text, or log line you got.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected, and where it is stated
+      description: |
+        Name the promise being broken: a section of README.md, a rule in SECURITY.md, or a guard in
+        server.py. A report with no stated promise is a feature request.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Shortest reproduction
+      description: |
+        The exact request, as a `tools/call` payload or the tool arguments. One job, one request, no
+        wrapper scripts. Include the job id from `start_job` when the job is involved.
+      render: json
+    validations:
+      required: true
+  - type: textarea
+    id: health
+    attributes:
+      label: Health output
+      description: "Paste `GET /health` verbatim. It carries the caps, limits, and free space."
+      render: json
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks run
+      options:
+        - label: "`smoke.py` passes against this deployment"
+        - label: "The behavior reproduces on a fresh state volume"
+        - label: "The behavior reproduces with `ERGON_ALLOW` at its documented default"

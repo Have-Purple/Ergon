@@ -1,0 +1,52 @@
+name: Feature request
+description: A capability, a refusal, or a documented behavior you want changed.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Each tool is a capability, so a request for a seventh tool should say what it refuses. A
+        request that widens the allow-list, the mounts, or the environment is a request to move a
+        security boundary, and it will be read as one.
+  - type: textarea
+    id: problem
+    attributes:
+      label: The task you cannot do today
+      description: The job you tried to start, the refusal you got, and why the current shape blocks it.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: The change, and its refusal
+      description: |
+        What the tool, setting, or behavior should do, and the shortest statement of what it must
+        refuse. Bounds belong here: output size, concurrency, disk, retention.
+    validations:
+      required: true
+  - type: textarea
+    id: cost
+    attributes:
+      label: What gets worse
+      description: |
+        Surface added, new state on disk, new failure modes, and what the deployment operator has to
+        set. A proposal with no cost is not priced.
+  - type: textarea
+    id: check
+    attributes:
+      label: The check that would pin it
+      description: |
+        A smoke check, a guard at startup, or a refusal message. Say how a broken implementation would
+        be caught.
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Which surface
+      options:
+        - A new tool
+        - A change to an existing tool
+        - A deployment setting
+        - The container image
+        - Documentation
+    validations:
+      required: true

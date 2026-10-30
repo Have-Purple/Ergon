@@ -1,0 +1,16 @@
+# Keep LF in the repository and in every checkout.
+# A CRLF Dockerfile breaks line continuation; a CRLF Python module is a portability trap.
+* text=auto eol=lf
+
+# Shell and Python keep LF explicitly.
+*.sh   text eol=lf
+*.py   text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+*.md   text eol=lf
+Dockerfile text eol=lf
+.env.example text eol=lf
+
+# No line-ending conversion for anything stored as binary.
+*.png binary
+*.gz binary
